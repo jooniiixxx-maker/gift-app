@@ -3,3 +3,4 @@ aiohttp
 fastapi
 uvicorn
 jinja2
+beautifulsoup4
