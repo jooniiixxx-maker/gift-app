@@ -19,6 +19,41 @@ async def get_items(url, only_dirs=False, only_ext=None):
 
     for a in soup.find_all("a"):
         href = a.get("href")
+
+        if not href:
+            continue
+
+        if href.startswith("?") or href in ["/", "../"]:
+            continue
+
+        # убираем ./ в начале
+        href_clean = href
+        if href_clean.startswith("./"):
+            href_clean = href_clean[2:]
+
+        name = unquote(href_clean).strip("/")
+
+        if not name:
+            continue
+
+        if name.startswith("?"):
+            continue
+
+        if only_dirs and not href.endswith("/"):
+            continue
+
+        if only_ext and not name.lower().endswith(only_ext):
+            continue
+
+        items.append(name)
+
+    return sorted(list(set(items)))
+
+    soup = BeautifulSoup(html, "html.parser")
+    items = []
+
+    for a in soup.find_all("a"):
+        href = a.get("href")
         text = a.get_text(strip=True)
 
         if not href or not text:
