@@ -4,7 +4,7 @@ import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 
-TOKEN = os.getenv("8708620848:AAEHi8SlcNczOYIaYH-4HnOcxbXvp-wlcOc")
+TOKEN = os.getenv("BOT_TOKEN")
 WEBAPP_URL = "https://тут_будет_render_url"
 
 bot = Bot(TOKEN)
