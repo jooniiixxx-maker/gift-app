@@ -1,9 +1,10 @@
 import asyncio
 import json
+import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 
-TOKEN = "8708620848:AAEHi8SlcNczOYIaYH-4HnOcxbXvp-wlcOc"
+TOKEN = os.getenv("8708620848:AAEHi8SlcNczOYIaYH-4HnOcxbXvp-wlcOc")
 WEBAPP_URL = "https://тут_будет_render_url"
 
 bot = Bot(TOKEN)
