@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 
 TOKEN = os.getenv("BOT_TOKEN")
-WEBAPP_URL = "https://тут_будет_render_url"
+WEBAPP_URL = "https://gift-app-xvm8.onrender.com"
 
 bot = Bot(TOKEN)
 dp = Dispatcher()
