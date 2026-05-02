@@ -276,19 +276,16 @@ async def gifts():
     return JSONResponse(result)
 
 
-@app.get("/api/models/{gift_name}")
-async def models(gift_name: str):
-    png_url = f"{CDN}/{quote(gift_name)}/png/"
-    png_files = await get_items(png_url, only_ext=".png")
+@app.get("/api/gifts")
+async def gifts():
+    gifts = await get_items(CDN + "/", only_dirs=True)
 
     result = []
 
-    for file in png_files:
-        model_name = file.replace(".png", "")
-
+    for gift in gifts:
         result.append({
-            "name": model_name,
-            "icon": f"{png_url}{quote(file)}"
+            "name": gift,
+            "icon": ""
         })
 
     return JSONResponse(result)
