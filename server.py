@@ -1,13 +1,20 @@
 import aiohttp
+import os
+import re
 from bs4 import BeautifulSoup
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from urllib.parse import quote, unquote
 
 app = FastAPI()
 
 CDN = "https://cdn.changes.tg/gifts/models"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
+user_packs = {}
+
+
+# -------------------- ПАРСИНГ --------------------
 
 async def get_items(url, only_dirs=False, only_ext=None):
     async with aiohttp.ClientSession() as session:
@@ -30,7 +37,7 @@ async def get_items(url, only_dirs=False, only_ext=None):
 
         name = unquote(href).strip("/")
 
-        if not name or name.startswith("?"):
+        if not name:
             continue
 
         if only_dirs and not href.endswith("/"):
@@ -44,6 +51,8 @@ async def get_items(url, only_dirs=False, only_ext=None):
     return sorted(list(set(items)))
 
 
+# -------------------- UI --------------------
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     return """
@@ -52,142 +61,253 @@ async def index():
 <head>
 <meta charset="UTF-8">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
 <style>
-body{margin:0;font-family:Arial;background:linear-gradient(135deg,#111827,#2e174f);color:white;padding:16px}
-h2{font-size:26px}
-input{width:100%;box-sizing:border-box;border:none;border-radius:16px;padding:14px;margin-bottom:14px;font-size:16px}
-.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.card{background:rgba(255,255,255,.1);border-radius:20px;padding:12px;text-align:center}
-.card img{width:95px;height:95px;object-fit:contain}
-.name{font-weight:bold;min-height:36px}
-button{width:100%;border:none;border-radius:15px;padding:12px;margin-top:8px;background:#8b5cf6;color:white;font-weight:bold}
-.back{background:#333;margin-bottom:14px}
+body {
+    margin: 0;
+    font-family: Arial;
+    background: linear-gradient(135deg,#0f172a,#3b0764);
+    color: white;
+    padding: 16px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(2,1fr);
+    gap: 12px;
+}
+
+.card {
+    background: rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 12px;
+    text-align: center;
+}
+
+.card img {
+    width: 90px;
+    height: 90px;
+    object-fit: contain;
+}
+
+button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 6px;
+    border: none;
+    border-radius: 12px;
+    background: #8b5cf6;
+    color: white;
+    font-weight: bold;
+}
+
+.success {
+    background: #16a34a;
+}
+
+.topbar {
+    display:flex;
+    justify-content:space-between;
+    margin-bottom:10px;
+}
 </style>
 </head>
+
 <body>
 
-<h2 id="title">🎁 Выбери подарок</h2>
-<input id="search" placeholder="Поиск подарка..." oninput="filterItems()">
-<div id="content">Загрузка...</div>
+<div class="topbar">
+<button onclick="finish()">Закончить</button>
+<button onclick="openPack()">Открыть пак</button>
+</div>
+
+<h2 id="title">Подарки</h2>
+<div id="content"><div class="loader"></div></div>
 
 <script>
 const tg = window.Telegram.WebApp;
 tg.expand();
 
-let allGifts = [];
+let currentGift = null;
+let packLink = null;
 
 async function loadGifts(){
-    const content = document.getElementById("content");
-    content.innerHTML = "Загрузка...";
-    content.className = "";
+    const res = await fetch("/api/gifts");
+    const gifts = await res.json();
 
-    try {
-        const res = await fetch("/api/gifts");
-        allGifts = await res.json();
-        renderGifts(allGifts);
-    } catch(e) {
-        content.innerHTML = "Ошибка загрузки подарков";
-    }
-}
-
-function renderGifts(items){
-    const content = document.getElementById("content");
-    content.className = "grid";
-    content.innerHTML = "";
-
-    items.forEach(gift=>{
-        const div = document.createElement("div");
-        div.className = "card";
-        div.innerHTML = `
-            <div class="name">${gift.name}</div>
-            <button onclick="loadModels('${gift.name.replaceAll("'", "\\\\'")}')">Открыть</button>
-        `;
-        content.appendChild(div);
+    let html = '<div class="grid">';
+    gifts.forEach(g=>{
+        html += `
+        <div class="card">
+            <div>${g.name}</div>
+            <button onclick="loadModels('${g.name}')">Открыть</button>
+        </div>`;
     });
+    html += "</div>";
+
+    content.innerHTML = "<button class='back' onclick='loadGifts()'>← Назад</button><div class='loader'></div>";
 }
 
-async function loadModels(giftName){
-    document.getElementById("title").innerText = giftName;
-    document.getElementById("search").style.display = "none";
+async function loadModels(gift){
+    currentGift = gift;
+    document.getElementById("title").innerText = gift;
 
-    const content = document.getElementById("content");
-    content.className = "";
-    content.innerHTML = "<button class='back' onclick='backToGifts()'>← Назад</button><div>Загрузка моделей...</div>";
+    const res = await fetch("/api/models?gift=" + encodeURIComponent(gift));
+    const models = await res.json();
 
-    try {
-        const res = await fetch("/api/models?gift=" + encodeURIComponent(giftName));
-        const models = await res.json();
+    let html = "<button onclick='loadGifts()'>Назад</button><div class='grid'>";
 
-        content.innerHTML = "<button class='back' onclick='backToGifts()'>← Назад</button>";
+    models.forEach(m=>{
+        html += `
+        <div class="card">
+            <img src="${m.icon}">
+            <div>${m.name}</div>
+            <button onclick="add('${gift}','${m.name}')">Добавить</button>
+        </div>`;
+    });
 
-        if (!models.length) {
-            content.innerHTML += "<div>Модели не найдены</div>";
-            return;
-        }
+    html += "</div>";
+    document.getElementById("content").innerHTML = html;
+}
 
-        const grid = document.createElement("div");
-        grid.className = "grid";
+async function add(gift, model){
+    showToast("⏳ Добавляем стикер...");
 
-        models.forEach(model=>{
-            const div = document.createElement("div");
-            div.className = "card";
-            div.innerHTML = `
-                <img src="${model.icon}" onerror="this.style.display='none'">
-                <div class="name">${model.name}</div>
-                <button onclick="sendSticker('${giftName.replaceAll("'", "\\\\'")}', '${model.name.replaceAll("'", "\\\\'")}', 'add')">➕ Добавить</button>
-                <button onclick="sendSticker('${giftName.replaceAll("'", "\\\\'")}', '${model.name.replaceAll("'", "\\\\'")}', 'find')">📤 Скинуть</button>
-            `;
-            grid.appendChild(div);
-        });
+    const res = await fetch("/api/add", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+            user_id: tg.initDataUnsafe.user.id,
+            gift: gift,
+            model: model
+        })
+    });
 
-        content.appendChild(grid);
+    const data = await res.json();
 
-    } catch(e) {
-        content.innerHTML += "<div>Ошибка загрузки моделей</div>";
+    if(data.ok){
+        packLink = data.link;
+        showToast("✅ Стикер добавлен");
+    } else {
+        showToast("❌ Ошибка добавления");
     }
 }
 
-function backToGifts(){
-    document.getElementById("title").innerText = "🎁 Выбери подарок";
-    document.getElementById("search").style.display = "block";
-    renderGifts(allGifts);
+function showToast(text){
+    const old = document.querySelector(".toast");
+    if(old) old.remove();
+
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    toast.innerText = text;
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.remove();
+    }, 2000);
 }
 
-function sendSticker(gift, model, action){
-    tg.sendData(JSON.stringify({action, gift, model}));
+function openPack(){
+    if(packLink){
+        window.open(packLink);
+    } else {
+        alert("Пак ещё не создан");
+    }
+}
+
+function finish(){
     tg.close();
-}
-
-function filterItems(){
-    const q = document.getElementById("search").value.toLowerCase();
-    renderGifts(allGifts.filter(g=>g.name.toLowerCase().includes(q)));
 }
 
 loadGifts();
 </script>
+
 </body>
 </html>
 """
 
 
+
+
 @app.get("/api/gifts")
 async def gifts():
-    gifts = await get_items(CDN + "/", only_dirs=True)
-    return JSONResponse([{"name": gift} for gift in gifts])
+    items = await get_items(CDN + "/", only_dirs=True)
+    return JSONResponse([{"name": i} for i in items])
 
 
 @app.get("/api/models")
-async def models(gift: str = Query(...)):
-    png_url = f"{CDN}/{quote(gift)}/png/"
-    png_files = await get_items(png_url, only_ext=".png")
+async def models(gift: str):
+    url = f"{CDN}/{quote(gift)}/png/"
+    files = await get_items(url, only_ext=".png")
 
-    result = []
+    return JSONResponse([
+        {
+            "name": f.replace(".png",""),
+            "icon": f"{url}{quote(f)}"
+        }
+        for f in files
+    ])
 
-    for file in png_files:
-        model_name = file.replace(".png", "")
-        result.append({
-            "name": model_name,
-            "icon": f"{png_url}{quote(file)}"
-        })
 
-    return JSONResponse(result)
+@app.post("/api/add")
+async def add(request: Request):
+    data = await request.json()
+
+    user_id = data["user_id"]
+    gift = data["gift"]
+    model = data["model"]
+
+    filename = f"{model}.tgs"
+    url = f"{CDN}/{quote(gift)}/{quote(model)}.tgs"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as r:
+            if r.status != 200:
+                return JSONResponse({"ok": False})
+
+            with open(filename, "wb") as f:
+                f.write(await r.read())
+
+    import requests
+
+    if user_id not in user_packs:
+        pack_name = f"giftpack_{user_id}_by_bot"
+
+        files = {"png_sticker": open(filename,"rb")}
+        data_req = {
+            "user_id": user_id,
+            "name": pack_name,
+            "title": "Gift Pack",
+            "emojis": "🎁"
+        }
+
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/createNewStickerSet",
+            data=data_req,
+            files=files
+        )
+
+        user_packs[user_id] = pack_name
+
+    else:
+        pack_name = user_packs[user_id]
+
+        files = {"png_sticker": open(filename,"rb")}
+        data_req = {
+            "user_id": user_id,
+            "name": pack_name,
+            "emojis": "🎁"
+        }
+
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/addStickerToSet",
+            data=data_req,
+            files=files
+        )
+
+    os.remove(filename)
+
+    return JSONResponse({
+        "ok": True,
+        "link": f"https://t.me/addstickers/{pack_name}"
+    })
