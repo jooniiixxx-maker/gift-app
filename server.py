@@ -482,6 +482,7 @@ async def add(request: Request):
                 title=pack["title"],
                 filename=filename
             )
+            print("CREATE RESULT:", result)
 
             if not result.get("ok"):
                 return JSONResponse({"ok": False, "error": result.get("description", "Telegram error")})
@@ -494,6 +495,7 @@ async def add(request: Request):
                 pack_name=pack_name,
                 filename=filename
             )
+            print("ADD RESULT:", result)
 
             if not result.get("ok"):
                 return JSONResponse({"ok": False, "error": result.get("description", "Telegram error")})
