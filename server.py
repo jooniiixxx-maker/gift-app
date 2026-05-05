@@ -268,29 +268,47 @@ tg.expand();
 let packLink = null;
 let packTitle = "Gift Pack";
 
+function getUserId(){
+    if (!tg.initDataUnsafe || !tg.initDataUnsafe.user) {
+        showToast("❌ Открой Mini App через кнопку бота");
+        return null;
+    }
+
+    return tg.initDataUnsafe.user.id;
+}
+
 async function createPack(){
+    const userId = getUserId();
+    if (!userId) return;
+
     const title = prompt("Введите название стикерпака:", "Gift Pack");
 
     if(!title) return;
 
     packTitle = title;
+    showToast("⏳ Создаём пак...");
 
-    const res = await fetch("/api/create-pack", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-            user_id: tg.initDataUnsafe.user.id,
-            title: packTitle
-        })
-    });
+    try {
+        const res = await fetch("/api/create-pack", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({
+                user_id: userId,
+                title: packTitle
+            })
+        });
 
-    const data = await res.json();
+        const data = await res.json();
 
-    if(data.ok){
-        packLink = data.link;
-        showToast("✅ Стикерпак подготовлен");
-    } else {
-        showToast("❌ Ошибка создания");
+        if(data.ok){
+            packLink = data.link;
+            showToast("✅ Стикерпак подготовлен");
+        } else {
+            showToast("❌ " + (data.error || "Ошибка создания"));
+        }
+    } catch(e) {
+        showToast("❌ Ошибка запроса");
+        console.error(e);
     }
 }
 
@@ -343,26 +361,35 @@ async function loadModels(gift){
 }
 
 async function addSticker(gift, model){
+    const userId = getUserId();
+    if (!userId) return;
+
     showToast("⏳ Добавляем...");
 
-    const res = await fetch("/api/add", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-            user_id: tg.initDataUnsafe.user.id,
-            title: packTitle,
-            gift: gift,
-            model: model
-        })
-    });
+    try {
+        const res = await fetch("/api/add", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({
+                user_id: userId,
+                title: packTitle,
+                gift: gift,
+                model: model
+            })
+        });
 
-    const data = await res.json();
+        const data = await res.json();
 
-    if(data.ok){
-        packLink = data.link;
-        showToast("✅ Стикер добавлен");
-    } else {
-        showToast("❌ " + (data.error || "Ошибка"));
+        if(data.ok){
+            packLink = data.link;
+            showToast("✅ Стикер добавлен");
+        } else {
+            showToast("❌ " + (data.error || "Ошибка сервера"));
+        }
+
+    } catch(e){
+        showToast("❌ Ошибка запроса");
+        console.error(e);
     }
 }
 
@@ -423,6 +450,9 @@ async def models(gift: str):
 async def create_pack(request: Request):
     data = await request.json()
 
+    if not BOT_TOKEN:
+        return JSONResponse({"ok": False, "error": "BOT_TOKEN не найден в Render"})
+
     user_id = int(data["user_id"])
     title = data.get("title", "Gift Pack")
 
@@ -447,6 +477,9 @@ async def create_pack(request: Request):
 @app.post("/api/add")
 async def add(request: Request):
     data = await request.json()
+
+    if not BOT_TOKEN:
+        return JSONResponse({"ok": False, "error": "BOT_TOKEN не найден в Render"})
 
     user_id = int(data["user_id"])
     title = data.get("title", "Gift Pack")
@@ -482,6 +515,7 @@ async def add(request: Request):
                 title=pack["title"],
                 filename=filename
             )
+
             print("CREATE RESULT:", result)
 
             if not result.get("ok"):
@@ -495,6 +529,7 @@ async def add(request: Request):
                 pack_name=pack_name,
                 filename=filename
             )
+
             print("ADD RESULT:", result)
 
             if not result.get("ok"):
